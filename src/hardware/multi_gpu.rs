@@ -9,8 +9,19 @@ use std::process::Command;
 pub struct LookingGlassConfig;
 
 impl LookingGlassConfig {
-    /// Find Looking Glass client in common locations
+    /// Finds the Looking Glass client in common locations.
     pub fn find_client() -> Option<PathBuf> {
+        // 1. Search PATH first for portability.
+        if let Ok(output) = Command::new("which").arg("looking-glass-client").output() {
+            if output.status.success() {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !path.is_empty() {
+                    return Some(PathBuf::from(path));
+                }
+            }
+        }
+
+        // 2. Try common FHS locations
         let candidates = [
             "/usr/bin/looking-glass-client",
             "/usr/local/bin/looking-glass-client",
@@ -21,16 +32,6 @@ impl LookingGlassConfig {
             let p = PathBuf::from(path);
             if p.exists() {
                 return Some(p);
-            }
-        }
-
-        // Try to find via which
-        if let Ok(output) = Command::new("which").arg("looking-glass-client").output() {
-            if output.status.success() {
-                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if !path.is_empty() {
-                    return Some(PathBuf::from(path));
-                }
             }
         }
 

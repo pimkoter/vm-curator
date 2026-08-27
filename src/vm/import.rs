@@ -1,6 +1,6 @@
 //! VM Import Logic
 //!
-//! Parses libvirt XML and quickemu .conf files, discovers importable VMs,
+//! Parses libvirt XML and Quickemu .conf files, discovers importable VMs,
 //! and executes the import (directory creation, disk handling, launch script generation).
 
 use anyhow::{bail, Context, Result};
@@ -15,7 +15,7 @@ use crate::wizard_types::{ImportDiskAction, ImportSource, ImportableVm, WizardQe
 // libvirt XML Parsing
 // =========================================================================
 
-/// Parse a libvirt domain XML file into an ImportableVm
+/// Parses a libvirt domain XML file into an ImportableVm.
 pub fn parse_libvirt_xml(path: &Path) -> Result<ImportableVm> {
     let content = fs::read_to_string(path)
         .with_context(|| format!("Failed to read libvirt XML: {}", path.display()))?;
@@ -23,7 +23,7 @@ pub fn parse_libvirt_xml(path: &Path) -> Result<ImportableVm> {
     parse_libvirt_xml_str(&content, path)
 }
 
-/// Return the value of the first attribute named `key` on an element, if present.
+/// Returns the value of the first attribute named `key` on an element, if present.
 fn find_attr(e: &quick_xml::events::BytesStart, key: &[u8]) -> Option<String> {
     e.attributes()
         .flatten()
@@ -31,13 +31,10 @@ fn find_attr(e: &quick_xml::events::BytesStart, key: &[u8]) -> Option<String> {
         .map(|attr| attr_value(&attr))
 }
 
-/// Mutable accumulator for streaming a libvirt domain XML document.
+/// Accumulator for streaming libvirt domain XML parsing.
 ///
-/// quick-xml is event-based, so parsed values build up across Start/Empty/Text/End
-/// events. Each `handle_*` method applies a single event, and
-/// [`LibvirtParse::into_importable_vm`] validates and maps the accumulated values
-/// onto a [`WizardQemuConfig`]. Splitting the work this way keeps each step small
-/// and independently readable instead of one large event loop.
+/// Uses event-based parsing via `quick-xml`. `handle_*` methods process events,
+/// and `into_importable_vm` maps values to a `WizardQemuConfig`.
 #[derive(Default)]
 struct LibvirtParse {
     domain_type: String,
@@ -419,7 +416,7 @@ fn convert_memory_to_kib(val: u64, unit: &str) -> u64 {
 // quickemu .conf Parsing
 // =========================================================================
 
-/// Parse a quickemu .conf file into an ImportableVm
+/// Parses a Quickemu .conf file into an ImportableVm.
 pub fn parse_quickemu_conf(path: &Path) -> Result<ImportableVm> {
     let content = fs::read_to_string(path)
         .with_context(|| format!("Failed to read quickemu conf: {}", path.display()))?;
@@ -576,7 +573,7 @@ fn parse_quickemu_conf_str(content: &str, config_path: &Path) -> Result<Importab
     })
 }
 
-/// Parse quickemu RAM string (e.g., "4G" -> 4096, "2048M" -> 2048, "2048" -> 2048)
+/// Parses Quickemu RAM strings (e.g., "4G" -> 4096, "2048M" -> 2048, "2048" -> 2048).
 fn parse_quickemu_ram(ram: &str) -> u32 {
     let ram = ram.trim();
     if ram.is_empty() {
@@ -785,7 +782,7 @@ pub fn execute_import(
         &vm.qemu_config,
         vm.detected_os_profile.as_deref(),
         None,
-    );
+    )?;
 
     write_launch_script(&vm_dir, &script_content)?;
     write_vm_metadata(&vm_dir, vm_name, vm.detected_os_profile.as_deref(), None)?;

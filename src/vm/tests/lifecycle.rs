@@ -5,7 +5,7 @@ fn test_replace_display_for_dbus_strips_spice_agent_channel() {
     use crate::vm::create::SPICE_AGENT_ARGS;
 
     // A spice-app launch command with the clipboard channel present.
-    let script = "#!/bin/bash\nqemu-system-x86_64 \\\n        -display spice-app \\\n        -device virtio-serial-pci \\\n        -chardev spicevmc,id=spicechannel0,name=vdagent \\\n        -device virtserialport,chardev=spicechannel0,name=com.redhat.spice.0 \\\n        -qmp unix:sock,server=on,wait=off\n";
+    let script = "#!/usr/bin/env bash\nqemu-system-x86_64 \\\n        -display spice-app \\\n        -device virtio-serial-pci \\\n        -chardev spicevmc,id=spicechannel0,name=vdagent \\\n        -device virtserialport,chardev=spicechannel0,name=com.redhat.spice.0 \\\n        -qmp unix:sock,server=on,wait=off\n";
 
     let dbus = replace_display_for_dbus(script, "-display dbus");
 
@@ -37,7 +37,7 @@ fn test_save_usb_passthrough_persists_in_launch_script() {
     let vm = test_vm(dir.path());
     std::fs::write(
         &vm.launch_script,
-        "#!/bin/bash\nqemu-system-x86_64 -m 2048\n",
+        "#!/usr/bin/env bash\nqemu-system-x86_64 -m 2048\n",
     )
     .unwrap();
     let devices = vec![UsbPassthrough {
@@ -67,7 +67,7 @@ fn test_save_usb_passthrough_persists_usb3_controller() {
     let vm = test_vm(dir.path());
     std::fs::write(
         &vm.launch_script,
-        "#!/bin/bash\nqemu-system-x86_64 -m 2048\n",
+        "#!/usr/bin/env bash\nqemu-system-x86_64 -m 2048\n",
     )
     .unwrap();
     let devices = vec![UsbPassthrough {
@@ -170,7 +170,7 @@ fn test_build_launch_invocation_validates_boot_media_before_spawning() {
 
 #[test]
 fn test_patch_window_size_override_migrates_existing_vga_script() {
-    let script = r#"#!/bin/bash
+    let script = r#"#!/usr/bin/env bash
 VM_DIR="$(dirname "$(readlink -f "$0")")"
 DISK="$VM_DIR/test.qcow2"
 
@@ -183,7 +183,7 @@ case "$1" in
         ;;
 esac
 "#;
-    let expected = r#"#!/bin/bash
+    let expected = r#"#!/usr/bin/env bash
 VM_DIR="$(dirname "$(readlink -f "$0")")"
 DISK="$VM_DIR/test.qcow2"
 
@@ -218,12 +218,12 @@ esac
 
 #[test]
 fn test_patch_window_size_override_migrates_existing_gl_device_script() {
-    let script = r#"#!/bin/bash
+    let script = r#"#!/usr/bin/env bash
 qemu-system-x86_64 \
     -device virtio-vga-gl \
     -display gtk,gl=on
 "#;
-    let expected = r#"#!/bin/bash
+    let expected = r#"#!/usr/bin/env bash
 # >>> Window size override (managed by vm-curator) >>>
 VM_CURATOR_VIDEO_DEVICE=virtio-vga-gl
 VM_CURATOR_VIDEO_ARGS=(-device virtio-vga-gl)
@@ -251,14 +251,14 @@ qemu-system-x86_64 \
 
 #[test]
 fn test_patch_window_size_override_leaves_unsupported_or_mixed_video_unchanged() {
-    let unsupported = r#"#!/bin/bash
+    let unsupported = r#"#!/usr/bin/env bash
 qemu-system-x86_64 \
     -vga cirrus \
     -display gtk
 "#;
     assert!(patch_window_size_override(unsupported).is_none());
 
-    let mixed = r#"#!/bin/bash
+    let mixed = r#"#!/usr/bin/env bash
 case "$1" in
     --install)
         qemu-system-x86_64 \
@@ -326,7 +326,7 @@ fn test_parse_supported_video_arg_line_rejects_unsupported_forms() {
 
 #[test]
 fn test_ensure_window_size_override_in_script_writes_patched_script() {
-    let script = r#"#!/bin/bash
+    let script = r#"#!/usr/bin/env bash
 qemu-system-x86_64 \
     -vga std \
     -display gtk
@@ -344,7 +344,7 @@ qemu-system-x86_64 \
 
 #[test]
 fn test_ensure_window_size_override_in_script_leaves_unsupported_script_unchanged() {
-    let script = r#"#!/bin/bash
+    let script = r#"#!/usr/bin/env bash
 qemu-system-x86_64 \
     -vga cirrus \
     -display gtk
@@ -498,7 +498,7 @@ fn test_parse_shared_folders_section_multiple() {
 
 #[test]
 fn test_remove_shared_folders_section() {
-    let content = "#!/bin/bash\n# >>> Shared Folders (managed by vm-curator) >>>\nSHARED_FOLDERS_ARGS=\"...\"\n# <<< Shared Folders <<<\nqemu-system-x86_64 $SHARED_FOLDERS_ARGS\n";
+    let content = "#!/usr/bin/env bash\n# >>> Shared Folders (managed by vm-curator) >>>\nSHARED_FOLDERS_ARGS=\"...\"\n# <<< Shared Folders <<<\nqemu-system-x86_64 $SHARED_FOLDERS_ARGS\n";
     let result = remove_shared_folders_section(content);
     assert!(!result.contains("SHARED_FOLDERS"));
     assert!(!result.contains(">>> Shared Folders"));
@@ -507,7 +507,7 @@ fn test_remove_shared_folders_section() {
 
 #[test]
 fn test_insert_shared_folders_section_simple() {
-    let content = "#!/bin/bash\nqemu-system-x86_64 -m 2048\n";
+    let content = "#!/usr/bin/env bash\nqemu-system-x86_64 -m 2048\n";
     let folders = vec![SharedFolder {
         host_path: "/tmp".to_string(),
         mount_tag: "host_tmp".to_string(),
@@ -526,7 +526,7 @@ fn test_insert_shared_folders_section_simple() {
 fn test_insert_section_before_case_statement() {
     // Scripts with case statements need the variable defined BEFORE the case,
     // not inside a branch (otherwise other branches can't see it).
-    let content = "#!/bin/bash\nVM_DIR=\".\"\ncase \"$1\" in\n    --install)\n        qemu-system-x86_64 -m 2048\n        ;;\n    \"\")\n        qemu-system-x86_64 -m 2048\n        ;;\nesac\n";
+    let content = "#!/usr/bin/env bash\nVM_DIR=\".\"\ncase \"$1\" in\n    --install)\n        qemu-system-x86_64 -m 2048\n        ;;\n    \"\")\n        qemu-system-x86_64 -m 2048\n        ;;\nesac\n";
     let section = "# >>> Shared Folders (managed by vm-curator) >>>\nSHARED_FOLDERS_ARGS=\"test\"\n# <<< Shared Folders <<<\n";
     let result = insert_shared_folders_section(content, section);
 
@@ -555,7 +555,7 @@ fn test_save_shared_folders_preserves_uefi_disk_boot_order() {
     let vm = test_vm(dir.path());
     std::fs::write(
         &vm.launch_script,
-        r#"#!/bin/bash
+        r#"#!/usr/bin/env bash
 VM_DIR="$(dirname "$(readlink -f "$0")")"
 DISK="$VM_DIR/linux.raw"
 OVMF_VARS="$VM_DIR/OVMF_VARS.fd"
@@ -698,7 +698,7 @@ fn test_detect_qemu_processes_parsing() {
 
 #[test]
 fn test_parse_pci_section_empty() {
-    let content = "#!/bin/bash\nqemu-system-x86_64 -m 2048\n";
+    let content = "#!/usr/bin/env bash\nqemu-system-x86_64 -m 2048\n";
     let args = parse_pci_section(content);
     assert!(args.is_empty());
 }
@@ -706,7 +706,7 @@ fn test_parse_pci_section_empty() {
 #[test]
 fn test_parse_pci_section_single_device() {
     let content = format!(
-        "#!/bin/bash\n{}\nPCI_PASSTHROUGH_ARGS=\"-device vfio-pci,host=0000:01:00.0\"\n{}\nqemu-system-x86_64 $PCI_PASSTHROUGH_ARGS\n",
+        "#!/usr/bin/env bash\n{}\nPCI_PASSTHROUGH_ARGS=\"-device vfio-pci,host=0000:01:00.0\"\n{}\nqemu-system-x86_64 $PCI_PASSTHROUGH_ARGS\n",
         PCI_MARKER_START, PCI_MARKER_END
     );
     let args = parse_pci_section(&content);
@@ -717,7 +717,7 @@ fn test_parse_pci_section_single_device() {
 #[test]
 fn test_parse_pci_section_multiple_devices() {
     let content = format!(
-        "#!/bin/bash\n{}\nPCI_PASSTHROUGH_ARGS=\"-device vfio-pci,host=0000:01:00.0 -device vfio-pci,host=0000:01:00.1\"\n{}\nqemu-system-x86_64 $PCI_PASSTHROUGH_ARGS\n",
+        "#!/usr/bin/env bash\n{}\nPCI_PASSTHROUGH_ARGS=\"-device vfio-pci,host=0000:01:00.0 -device vfio-pci,host=0000:01:00.1\"\n{}\nqemu-system-x86_64 $PCI_PASSTHROUGH_ARGS\n",
         PCI_MARKER_START, PCI_MARKER_END
     );
     let args = parse_pci_section(&content);
@@ -729,7 +729,7 @@ fn test_parse_pci_section_multiple_devices() {
 #[test]
 fn test_parse_pci_section_with_multifunction() {
     let content = format!(
-        "#!/bin/bash\n{}\nPCI_PASSTHROUGH_ARGS=\"-device vfio-pci,host=0000:01:00.0,multifunction=on\"\n{}\n",
+        "#!/usr/bin/env bash\n{}\nPCI_PASSTHROUGH_ARGS=\"-device vfio-pci,host=0000:01:00.0,multifunction=on\"\n{}\n",
         PCI_MARKER_START, PCI_MARKER_END
     );
     let args = parse_pci_section(&content);
@@ -745,7 +745,7 @@ fn test_parse_pci_section_with_vfio_bind_functions() {
     // The new PCI section format includes VFIO bind/unbind functions alongside
     // PCI_PASSTHROUGH_ARGS. The parser should still extract only the QEMU args.
     let content = format!(
-        "#!/bin/bash\n\
+        "#!/usr/bin/env bash\n\
         {}\n\
         PCI_PASSTHROUGH_ARGS=\"-device vfio-pci,host=0000:10:00.0,multifunction=on -device vfio-pci,host=0000:10:00.1\"\n\
         PCI_DEVICES=(\"0000:10:00.0\" \"0000:10:00.1\")\n\
@@ -775,7 +775,7 @@ fn test_ensure_qmp_repairs_unquoted_socket_path() {
     // Scripts generated by v1.0.0–v1.2.1 carry an unquoted socket path that
     // word-splits when the VM library path contains spaces (issue #65).
     let tmp = tempfile::tempdir().unwrap();
-    let script = "#!/bin/bash\n\
+    let script = "#!/usr/bin/env bash\n\
         qemu-system-x86_64 \\\n\
         -m 2048 \\\n\
         -qmp \\\n\
@@ -796,7 +796,7 @@ fn test_ensure_qmp_repairs_unquoted_socket_path() {
 #[test]
 fn test_ensure_qmp_repair_is_idempotent() {
     let tmp = tempfile::tempdir().unwrap();
-    let script = "#!/bin/bash\n\
+    let script = "#!/usr/bin/env bash\n\
         qemu-system-x86_64 \\\n\
         -qmp unix:$VM_DIR/qemu.sock,server=on,wait=off\n";
     std::fs::write(tmp.path().join("launch.sh"), script).unwrap();
@@ -816,7 +816,7 @@ fn test_ensure_qmp_retrofit_inserts_quoted_arg() {
     // A pre-1.0 script with no QMP line at all gets the arg patched in,
     // and the patched-in form must be the quoted one.
     let tmp = tempfile::tempdir().unwrap();
-    let script = "#!/bin/bash\n\
+    let script = "#!/usr/bin/env bash\n\
 case \"$1\" in\n\
     *)\n\
         qemu-system-x86_64 \\\n\
@@ -841,7 +841,7 @@ fn test_usb_bootindex_round_trip() {
     let vm = test_vm(dir.path());
     std::fs::write(
         &vm.launch_script,
-        "#!/bin/bash\nqemu-system-x86_64 -m 2048\n",
+        "#!/usr/bin/env bash\nqemu-system-x86_64 -m 2048\n",
     )
     .unwrap();
     let devices = vec![
@@ -878,7 +878,7 @@ fn test_disk_passthrough_save_load_round_trip() {
     let vm = test_vm(dir.path());
     std::fs::write(
         &vm.launch_script,
-        "#!/bin/bash\nqemu-system-x86_64 -m 2048\n",
+        "#!/usr/bin/env bash\nqemu-system-x86_64 -m 2048\n",
     )
     .unwrap();
     let disks = vec![
@@ -917,7 +917,7 @@ fn test_disk_passthrough_save_load_round_trip() {
 fn test_disk_passthrough_remove_is_idempotent() {
     let dir = tempfile::tempdir().unwrap();
     let vm = test_vm(dir.path());
-    let original = "#!/bin/bash\nqemu-system-x86_64 -m 2048\n";
+    let original = "#!/usr/bin/env bash\nqemu-system-x86_64 -m 2048\n";
     std::fs::write(&vm.launch_script, original).unwrap();
 
     let disks = vec![DiskPassthrough {
@@ -941,7 +941,7 @@ fn test_disk_passthrough_coexists_with_usb_section() {
     let vm = test_vm(dir.path());
     std::fs::write(
         &vm.launch_script,
-        "#!/bin/bash\nqemu-system-x86_64 -m 2048\n",
+        "#!/usr/bin/env bash\nqemu-system-x86_64 -m 2048\n",
     )
     .unwrap();
 
