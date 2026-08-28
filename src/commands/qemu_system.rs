@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-/// Get QEMU version information
+/// Gets QEMU version information.
 pub fn get_qemu_version(emulator: &str) -> Result<String> {
     let output = Command::new(emulator)
         .arg("--version")
@@ -17,7 +17,7 @@ pub fn get_qemu_version(emulator: &str) -> Result<String> {
     Ok(stdout.lines().next().unwrap_or("Unknown").to_string())
 }
 
-/// Check if QEMU emulator is available
+/// Checks if a QEMU emulator is available in the system PATH.
 pub fn is_emulator_available(emulator: &str) -> bool {
     Command::new("which")
         .arg(emulator)
@@ -26,7 +26,7 @@ pub fn is_emulator_available(emulator: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// List available QEMU emulators on the system
+/// Lists available QEMU emulators on the system.
 pub fn list_available_emulators() -> Vec<String> {
     let emulators = [
         "qemu-system-x86_64",
@@ -44,12 +44,12 @@ pub fn list_available_emulators() -> Vec<String> {
         .collect()
 }
 
-/// Check KVM availability
+/// Checks if KVM is available (via /dev/kvm).
 pub fn is_kvm_available() -> bool {
     Path::new("/dev/kvm").exists()
 }
 
-/// Get supported display backends for a QEMU emulator
+/// Gets supported display backends for a QEMU emulator.
 ///
 /// Runs `<emulator> -display help` and parses the output to get
 /// the list of supported display backends (e.g., gtk, sdl, spice-app, vnc).
@@ -119,9 +119,7 @@ fn is_valid_display_backend(name: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
-/// Check if a SPICE viewer application is available in PATH
-///
-/// Checks for `remote-viewer` (from virt-viewer package) or `virt-viewer`.
+/// Checks if a SPICE viewer application (remote-viewer or virt-viewer) is available in PATH.
 pub fn is_spice_viewer_available() -> bool {
     for viewer in &["remote-viewer", "virt-viewer"] {
         if Command::new("which")
@@ -136,7 +134,7 @@ pub fn is_spice_viewer_available() -> bool {
     false
 }
 
-/// Get KVM module info
+/// Gets KVM module information.
 pub fn get_kvm_info() -> Option<String> {
     if !is_kvm_available() {
         return None;
@@ -198,6 +196,8 @@ fn find_bridge_helper() -> Option<PathBuf> {
         "/usr/lib/qemu/qemu-bridge-helper",
         "/usr/libexec/qemu-bridge-helper",
         "/usr/libexec/qemu/qemu-bridge-helper",
+        // NixOS
+        "/run/wrappers/bin/qemu-bridge-helper",
     ];
 
     for path in paths {
@@ -209,7 +209,7 @@ fn find_bridge_helper() -> Option<PathBuf> {
     None
 }
 
-/// Check if bridge helper has setuid or CAP_NET_ADMIN
+/// Checks if the bridge helper has the setuid bit or CAP_NET_ADMIN capability.
 fn is_bridge_helper_configured(path: &Path) -> bool {
     // Check setuid bit
     if let Ok(metadata) = std::fs::metadata(path) {
@@ -231,7 +231,7 @@ fn is_bridge_helper_configured(path: &Path) -> bool {
     false
 }
 
-/// List bridges currently on the system
+/// Lists bridges currently active on the system.
 fn list_system_bridges() -> Vec<String> {
     let output = match Command::new("ip")
         .args(["-o", "link", "show", "type", "bridge"])
@@ -253,6 +253,26 @@ fn list_system_bridges() -> Vec<String> {
         }
     }
     bridges
+}
+
+/// Discovers QEMU firmware search paths via `<emulator> -L help`.
+///
+/// Particularly useful on NixOS where firmware is located in the
+/// QEMU package's store path rather than /usr/share.
+pub fn discover_qemu_firmware_paths(emulator: &str) -> Vec<PathBuf> {
+    let output = match Command::new(emulator).arg("-L").arg("help").output() {
+        Ok(o) => o,
+        Err(_) => return Vec::new(),
+    };
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    stdout
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .map(PathBuf::from)
+        .filter(|path| path.exists())
+        .collect()
 }
 
 #[cfg(test)]

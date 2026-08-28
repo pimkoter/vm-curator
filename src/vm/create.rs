@@ -7,8 +7,8 @@ use anyhow::{bail, Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Shell-escape a string for safe interpolation in bash scripts.
-/// This handles special characters that could cause command injection.
+/// Escapes a string for safe interpolation in Bash scripts.
+/// Handles special characters to prevent command injection.
 fn shell_escape(s: &str) -> String {
     // If the string contains only safe characters, return as-is
     if s.chars()
@@ -23,7 +23,7 @@ fn shell_escape(s: &str) -> String {
     format!("'{}'", escaped)
 }
 
-use crate::commands::qemu_img;
+use crate::commands::{qemu_img, qemu_system};
 use crate::vm::qemu_config::{PortForward, PortProtocol};
 use crate::wizard_types::{
     CreateWizardState, DiskAction, DiskImageFormat, WizardDiskSource, WizardQemuConfig,
@@ -115,9 +115,9 @@ struct OvmfFirmware {
 
 /// Secure Boot OVMF pairs `(code, vars, format)` in priority order.
 ///
-/// 4M variants are listed first: Fedora's 2M `OVMF_CODE.secboot.fd` does not
-/// expose TPM 2.0 correctly to the Windows 11 installer (issue #42), so we must
-/// prefer the 4M build — including Fedora's qcow2-format firmware — when present.
+/// 4M variants are preferred: Fedora's 2M `OVMF_CODE.secboot.fd` fails to expose
+/// TPM 2.0 correctly to the Windows 11 installer (issue #42). The 4M build,
+/// including Fedora's qcow2-format firmware, resolves this.
 const OVMF_SECBOOT_PAIRS: &[(&str, &str, &str)] = &[
     // Fedora/RHEL — 4M qcow2 (Fedora 40+/44 ship firmware as qcow2)
     (
@@ -151,6 +151,28 @@ const OVMF_SECBOOT_PAIRS: &[(&str, &str, &str)] = &[
     (
         "/usr/share/OVMF/OVMF_CODE_4M.ms.fd",
         "/usr/share/OVMF/OVMF_VARS_4M.ms.fd",
+        "raw",
+    ),
+    // NixOS (via libvirt stable path)
+    (
+        "/run/libvirt/nix-ovmf/edk2-x86_64-secure-code.fd",
+        "/run/libvirt/nix-ovmf/edk2-i386-vars.fd",
+        "raw",
+    ),
+    (
+        "/run/libvirt/nix-ovmf/OVMF_CODE.ms.fd",
+        "/run/libvirt/nix-ovmf/OVMF_VARS.ms.fd",
+        "raw",
+    ),
+    (
+        "/run/libvirt/nix-ovmf/OVMF_CODE.fd",
+        "/run/libvirt/nix-ovmf/OVMF_VARS.fd",
+        "raw",
+    ),
+    // NixOS (via systemPackages)
+    (
+        "/run/current-system/sw/share/OVMF/OVMF_CODE.fd",
+        "/run/current-system/sw/share/OVMF/OVMF_VARS.fd",
         "raw",
     ),
     // --- 2M fallbacks (last resort) ---
@@ -242,6 +264,11 @@ const OVMF_PAIRS: &[(&str, &str, &str)] = &[
     ),
     // NixOS
     (
+        "/run/libvirt/nix-ovmf/edk2-x86_64-code.fd",
+        "/run/libvirt/nix-ovmf/edk2-i386-vars.fd",
+        "raw",
+    ),
+    (
         "/run/libvirt/nix-ovmf/OVMF_CODE.fd",
         "/run/libvirt/nix-ovmf/OVMF_VARS.fd",
         "raw",
@@ -259,35 +286,85 @@ const OVMF_PAIRS: &[(&str, &str, &str)] = &[
     ),
 ];
 
-/// Fallback firmware pair used when no known CODE+VARS pair exists on disk.
-fn default_ovmf_firmware() -> OvmfFirmware {
-    OvmfFirmware {
-        code: "/usr/share/OVMF/OVMF_CODE.fd".to_string(),
-        vars_template: "/usr/share/OVMF/OVMF_VARS.fd".to_string(),
-        format: "raw",
-    }
-}
-
 /// Select a matched OVMF CODE+VARS firmware pair, preferring 4M builds.
 ///
 /// Both the CODE and VARS file of a candidate pair must exist on disk before it
 /// is chosen, so the returned CODE and VARS always agree in size and format.
-fn find_ovmf_firmware(secboot: bool) -> Option<OvmfFirmware> {
+fn find_ovmf_firmware(secboot: bool, emulator: &str) -> Result<OvmfFirmware> {
     let table = if secboot {
         OVMF_SECBOOT_PAIRS
     } else {
         OVMF_PAIRS
     };
+
+    // 1. Search known static distribution paths
     for &(code, vars, format) in table {
         if Path::new(code).exists() && Path::new(vars).exists() {
-            return Some(OvmfFirmware {
+            return Ok(OvmfFirmware {
                 code: code.to_string(),
                 vars_template: vars.to_string(),
                 format,
             });
         }
     }
-    None
+
+    // 2. Runtime discovery via QEMU search paths (NixOS-friendly)
+    let search_paths = qemu_system::discover_qemu_firmware_paths(emulator);
+    for path in search_paths {
+        // Architecture-specific names (preferred by QEMU bundles)
+        let candidates = if secboot {
+            vec![
+                ("edk2-x86_64-secure-code.fd", "edk2-i386-vars.fd"),
+                ("OVMF_CODE.ms.fd", "OVMF_VARS.ms.fd"),
+                ("OVMF_CODE.secboot.fd", "OVMF_VARS.fd"),
+            ]
+        } else {
+            vec![
+                ("edk2-x86_64-code.fd", "edk2-i386-vars.fd"),
+                ("OVMF_CODE.fd", "OVMF_VARS.fd"),
+            ]
+        };
+
+        for (code_name, vars_name) in candidates {
+            let code = path.join(code_name);
+            let vars = path.join(vars_name);
+            if code.exists() && vars.exists() {
+                return Ok(OvmfFirmware {
+                    code: code.to_string_lossy().to_string(),
+                    vars_template: vars.to_string_lossy().to_string(),
+                    format: "raw",
+                });
+            }
+        }
+    }
+
+    // 3. Last resort fallbacks (not guaranteed to exist, but gives a starting point for errors)
+    let fallback = if secboot {
+        OvmfFirmware {
+            code: "/usr/share/OVMF/OVMF_CODE_4M.secboot.fd".to_string(),
+            vars_template: "/usr/share/OVMF/OVMF_VARS_4M.ms.fd".to_string(),
+            format: "raw",
+        }
+    } else {
+        OvmfFirmware {
+            code: "/usr/share/OVMF/OVMF_CODE.fd".to_string(),
+            vars_template: "/usr/share/OVMF/OVMF_VARS.fd".to_string(),
+            format: "raw",
+        }
+    };
+
+    if Path::new(&fallback.code).exists() && Path::new(&fallback.vars_template).exists() {
+        Ok(fallback)
+    } else {
+        let msg = if secboot {
+            "Could not find OVMF Secure Boot firmware (OVMF_CODE.secboot.fd). \
+             Please install the 'ovmf' or 'edk2-ovmf' package."
+        } else {
+            "Could not find OVMF UEFI firmware (OVMF_CODE.fd). \
+             Please install the 'ovmf' or 'edk2-ovmf' package."
+        };
+        bail!(msg);
+    }
 }
 
 /// Result of creating a new VM
@@ -416,7 +493,7 @@ pub fn create_vm_with_disk_format(
         &qemu_config,
         state.selected_os.as_deref(),
         state.floppy_path.as_deref(),
-    );
+    )?;
     let launch_script_path = write_launch_script(&vm_dir, &script_content)?;
 
     // Write VM metadata file with custom display name
@@ -437,8 +514,8 @@ pub(crate) fn detect_existing_disk_image_format(path: &Path) -> DiskImageFormat 
         .unwrap_or(DiskImageFormat::Qcow2)
 }
 
-/// True if the path names a physical block device (by /dev prefix or file type).
-/// Guards against catastrophic fs::copy/fs::rename of a raw disk.
+/// Checks if the path refers to a physical block device (e.g., via /dev prefix or file type).
+/// Prevents accidental operations on raw disks.
 pub(crate) fn is_block_device(path: &Path) -> bool {
     use std::os::unix::fs::FileTypeExt;
     if path.starts_with("/dev") {
@@ -708,24 +785,25 @@ trap cleanup EXIT
 /// (via [`find_ovmf_firmware`]) so CODE and VARS always match in size/format.
 /// The writable copy's extension mirrors the firmware format (`.qcow2` vs
 /// `.fd`) and the QEMU `-drive ...,format=` flag is derived from the same pair.
-fn generate_ovmf_vars_setup(needs_secboot: bool) -> String {
-    let firmware = find_ovmf_firmware(needs_secboot).unwrap_or_else(default_ovmf_firmware);
+fn generate_ovmf_vars_setup(needs_secboot: bool, emulator: &str) -> Result<String> {
+    let firmware = find_ovmf_firmware(needs_secboot, emulator)?;
     let vars_ext = if firmware.format == "qcow2" {
         "qcow2"
     } else {
         "fd"
     };
 
-    format!(
+    Ok(format!(
         r#"# UEFI variables (writable copy per VM)
-OVMF_VARS_TEMPLATE="{template}"
-OVMF_VARS="$VM_DIR/OVMF_VARS.{ext}"
+OVMF_VARS_TEMPLATE="{}"
+OVMF_VARS="$VM_DIR/OVMF_VARS.{}"
 
 # Create a writable copy of OVMF_VARS if it doesn't exist
 if [[ ! -f "$OVMF_VARS" ]]; then
     if [[ -f "$OVMF_VARS_TEMPLATE" ]]; then
         echo "Creating UEFI variables file..."
         cp "$OVMF_VARS_TEMPLATE" "$OVMF_VARS"
+        chmod 600 "$OVMF_VARS"
     else
         echo "Warning: OVMF_VARS template not found at $OVMF_VARS_TEMPLATE"
         echo "UEFI variables may not persist across reboots"
@@ -733,9 +811,8 @@ if [[ ! -f "$OVMF_VARS" ]]; then
 fi
 
 "#,
-        template = firmware.vars_template,
-        ext = vars_ext
-    )
+        firmware.vars_template, vars_ext
+    ))
 }
 
 fn shell_array_literal(args: &[String]) -> String {
@@ -794,8 +871,8 @@ fi
     )
 }
 
-/// Launch-time safety checks emitted after `DISK=` for physical passthrough:
-/// refuse to start if the device is missing, inaccessible, or mounted.
+/// Launch-time safety checks for physical passthrough:
+/// Refuses to start if the device is missing, inaccessible, or mounted.
 const PHYSICAL_DISK_PREFLIGHT: &str = r#"if [[ ! -b "$DISK" ]]; then
     echo "Error: passthrough disk not found: $DISK"
     exit 1
@@ -823,7 +900,7 @@ pub fn generate_launch_script_with_os<'a>(
     config: &WizardQemuConfig,
     os_profile: Option<&str>,
     floppy_path: Option<&Path>,
-) -> String {
+) -> Result<String> {
     let disk: DiskTarget<'a> = disk.into();
     let mut script = String::new();
 
@@ -833,7 +910,7 @@ pub fn generate_launch_script_with_os<'a>(
     let needs_uefi = config.uefi || is_windows_11(os_profile);
 
     // Shebang and header
-    script.push_str("#!/bin/bash\n\n");
+    script.push_str("#!/usr/bin/env bash\n\n");
     script.push_str(&format!("# {} VM Launch Script\n", vm_name));
     script.push_str(&format!(
         "# {} CPUs, {}MB RAM, {} graphics, {} disk interface\n",
@@ -936,7 +1013,7 @@ fi
 
     // UEFI setup with writable OVMF_VARS
     if needs_uefi {
-        script.push_str(&generate_ovmf_vars_setup(needs_tpm));
+        script.push_str(&generate_ovmf_vars_setup(needs_tpm, &config.emulator)?);
     }
 
     // TPM functions
@@ -963,7 +1040,7 @@ fi
         None
     };
     let base_cmd =
-        build_qemu_command_with_os(config, disk, &InstallMedia::None, os_profile, floppy_ref);
+        build_qemu_command_with_os(config, disk, &InstallMedia::None, os_profile, floppy_ref)?;
 
     let install_cmd = if is_recovery_image {
         build_qemu_command_with_os(
@@ -972,7 +1049,7 @@ fi
             &InstallMedia::RecoveryImage(None),
             os_profile,
             floppy_ref,
-        )
+        )?
     } else {
         build_qemu_command_with_os(
             config,
@@ -980,7 +1057,7 @@ fi
             &InstallMedia::Iso(None),
             os_profile,
             floppy_ref,
-        )
+        )?
     };
 
     // Main script logic
@@ -1035,7 +1112,7 @@ fi
         &InstallMedia::Iso(Some("\"$2\"")),
         os_profile,
         floppy_ref,
-    );
+    )?;
     script.push_str(&format!("        {}\n", cdrom_cmd));
     script.push_str("        ;;\n");
 
@@ -1057,7 +1134,7 @@ fi
         &InstallMedia::RecoveryImage(Some("\"$2\"")),
         os_profile,
         floppy_ref,
-    );
+    )?;
     script.push_str(&format!("        {}\n", recovery_cmd));
     script.push_str("        ;;\n");
 
@@ -1080,7 +1157,7 @@ fi
         os_profile,
         Some("\"$2\""),
         true,
-    );
+    )?;
     script.push_str(&format!("        {}\n", floppy_cmd));
     script.push_str("        ;;\n");
 
@@ -1104,7 +1181,7 @@ fi
     script.push_str("        ;;\n");
     script.push_str("esac\n");
 
-    script
+    Ok(script)
 }
 
 /// SPICE guest-agent channel — enables clipboard sharing (copy/paste) between
@@ -1149,7 +1226,7 @@ fn build_qemu_command_with_os<'a>(
     install_media: &InstallMedia,
     os_profile: Option<&str>,
     floppy_path: Option<&str>,
-) -> String {
+) -> Result<String> {
     build_qemu_command_with_os_impl(config, disk, install_media, os_profile, floppy_path, false)
 }
 
@@ -1160,7 +1237,7 @@ fn build_qemu_command_with_os_impl<'a>(
     os_profile: Option<&str>,
     floppy_path: Option<&str>,
     boot_from_floppy: bool,
-) -> String {
+) -> Result<String> {
     let disk: DiskTarget<'a> = disk.into();
     let mut args: Vec<String> = Vec::new();
 
@@ -1229,7 +1306,7 @@ fn build_qemu_command_with_os_impl<'a>(
     // agree in size and on-disk format (raw vs qcow2).
     if needs_uefi {
         let needs_secboot = needs_tpm;
-        let firmware = find_ovmf_firmware(needs_secboot).unwrap_or_else(default_ovmf_firmware);
+        let firmware = find_ovmf_firmware(needs_secboot, &config.emulator)?;
         // OVMF_CODE is read-only
         args.push(format!(
             "-drive if=pflash,format={},readonly=on,file={}",
@@ -1550,7 +1627,7 @@ fn build_qemu_command_with_os_impl<'a>(
     args.push("-qmp".to_string());
     args.push("unix:\"$VM_DIR/qemu.sock\",server=on,wait=off".to_string());
 
-    args.join(" \\\n        ")
+    Ok(args.join(" \\\n        "))
 }
 
 /// Write the launch script to disk and make it executable

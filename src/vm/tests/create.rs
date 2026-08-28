@@ -56,9 +56,10 @@ fn test_generate_launch_script() {
         &config,
         None,
         None,
-    );
+    )
+    .unwrap();
 
-    assert!(script.contains("#!/bin/bash"));
+    assert!(script.contains("#!/usr/bin/env bash"));
     assert!(script.contains("Test VM"));
     assert!(script.contains("test.qcow2"));
     assert!(script.contains("/tmp/test.iso"));
@@ -189,7 +190,8 @@ fn test_build_qemu_command_basic() {
         bios_path: None,
     };
 
-    let cmd = build_qemu_command_with_os(&config, "disk.qcow2", &InstallMedia::None, None, None);
+    let cmd =
+        build_qemu_command_with_os(&config, "disk.qcow2", &InstallMedia::None, None, None).unwrap();
 
     assert!(cmd.contains("qemu-system-x86_64"));
     assert!(cmd.contains("-enable-kvm"));
@@ -206,7 +208,8 @@ fn test_build_qemu_command_basic() {
 fn test_build_qemu_command_with_cdrom() {
     let config = WizardQemuConfig::default();
     let cmd =
-        build_qemu_command_with_os(&config, "disk.qcow2", &InstallMedia::Iso(None), None, None);
+        build_qemu_command_with_os(&config, "disk.qcow2", &InstallMedia::Iso(None), None, None)
+            .unwrap();
 
     assert!(cmd.contains("-drive file=\"$ISO\",media=cdrom"));
     assert!(cmd.contains("-boot d"));
@@ -220,7 +223,8 @@ fn test_build_qemu_command_uefi_normal_boot_prefers_disk() {
         ..WizardQemuConfig::default()
     };
 
-    let cmd = build_qemu_command_with_os(&config, "disk.qcow2", &InstallMedia::None, None, None);
+    let cmd =
+        build_qemu_command_with_os(&config, "disk.qcow2", &InstallMedia::None, None, None).unwrap();
 
     assert!(cmd.contains("-drive if=pflash,format=raw,file=\"$OVMF_VARS\""));
     assert!(cmd.contains("-global virtio-blk-pci.bootindex=0"));
@@ -243,7 +247,8 @@ fn test_build_qemu_command_uefi_normal_boot_with_attached_floppy_prefers_disk() 
         &InstallMedia::None,
         None,
         Some("\"$FLOPPY\""),
-    );
+    )
+    .unwrap();
 
     assert!(cmd.contains("-fda \"$FLOPPY\""));
     assert!(cmd.contains("-global virtio-blk-pci.bootindex=0"));
@@ -266,7 +271,8 @@ fn test_build_qemu_command_uefi_explicit_floppy_boot_does_not_force_disk() {
         None,
         Some("\"$2\""),
         true,
-    );
+    )
+    .unwrap();
 
     assert!(cmd.contains("-fda \"$2\""));
     assert!(cmd.contains("-boot a"));
@@ -284,7 +290,8 @@ fn test_build_qemu_command_uefi_cdrom_still_prefers_cdrom() {
     };
 
     let cmd =
-        build_qemu_command_with_os(&config, "disk.qcow2", &InstallMedia::Iso(None), None, None);
+        build_qemu_command_with_os(&config, "disk.qcow2", &InstallMedia::Iso(None), None, None)
+            .unwrap();
 
     assert!(cmd.contains("-boot d"));
     assert!(!cmd.contains("-global virtio-blk-pci.bootindex=0"));
@@ -371,7 +378,8 @@ fn test_build_qemu_command_with_audio() {
         ..Default::default()
     };
 
-    let cmd = build_qemu_command_with_os(&config, "disk.qcow2", &InstallMedia::None, None, None);
+    let cmd =
+        build_qemu_command_with_os(&config, "disk.qcow2", &InstallMedia::None, None, None).unwrap();
 
     assert!(cmd.contains("-audiodev pa,id=audio0"));
     assert!(cmd.contains("-device intel-hda"));
@@ -411,7 +419,8 @@ fn test_build_qemu_command_with_bios() {
         &InstallMedia::None,
         Some("mac-system7"),
         None,
-    );
+    )
+    .unwrap();
     assert!(
         cmd.contains("-bios \"$ROM\""),
         "Should contain -bios \"$ROM\", got:\n{}",
@@ -426,7 +435,8 @@ fn test_build_qemu_command_with_bios() {
 #[test]
 fn test_build_qemu_command_without_bios() {
     let config = WizardQemuConfig::default();
-    let cmd = build_qemu_command_with_os(&config, "disk.qcow2", &InstallMedia::None, None, None);
+    let cmd =
+        build_qemu_command_with_os(&config, "disk.qcow2", &InstallMedia::None, None, None).unwrap();
     assert!(
         !cmd.contains("-bios"),
         "Should NOT contain -bios when no bios_path"
@@ -436,7 +446,8 @@ fn test_build_qemu_command_without_bios() {
 #[test]
 fn test_build_qemu_command_with_raw_disk() {
     let config = WizardQemuConfig::default();
-    let cmd = build_qemu_command_with_os(&config, "disk.raw", &InstallMedia::None, None, None);
+    let cmd =
+        build_qemu_command_with_os(&config, "disk.raw", &InstallMedia::None, None, None).unwrap();
 
     assert!(
         cmd.contains("-drive file=\"$DISK\",format=raw,if=ide,index=0,media=disk"),
@@ -454,7 +465,8 @@ fn test_build_qemu_command_with_raw_disk() {
 fn test_generate_launch_script_with_raw_disk() {
     let config = WizardQemuConfig::default();
     let script =
-        generate_launch_script_with_os("Raw VM", "raw-vm.raw", None, false, &config, None, None);
+        generate_launch_script_with_os("Raw VM", "raw-vm.raw", None, false, &config, None, None)
+            .unwrap();
 
     assert!(script.contains("DISK=\"$VM_DIR/raw-vm.raw\""));
     assert!(script.contains("format=raw,if=ide,index=0,media=disk"));
@@ -476,7 +488,8 @@ fn test_generate_launch_script_with_rom() {
         &config,
         Some("mac-system7"),
         None,
-    );
+    )
+    .unwrap();
 
     assert!(
         script.contains("ROM=\"$VM_DIR/MacROM.bin\""),
@@ -497,7 +510,8 @@ fn test_build_qemu_command_with_recovery_image() {
         &InstallMedia::RecoveryImage(None),
         None,
         None,
-    );
+    )
+    .unwrap();
 
     assert!(
         cmd.contains("format=dmg"),
@@ -530,7 +544,8 @@ fn test_build_qemu_command_with_recovery_image_custom_path() {
         &InstallMedia::RecoveryImage(Some("\"$2\"")),
         None,
         None,
-    );
+    )
+    .unwrap();
 
     assert!(cmd.contains("format=dmg"), "Should contain format=dmg");
     assert!(cmd.contains("\"$2\""), "Should use custom path expression");
@@ -548,7 +563,8 @@ fn test_generate_launch_script_with_recovery_image() {
         &config,
         Some("macos-tahoe"),
         None,
-    );
+    )
+    .unwrap();
 
     assert!(
         script.contains("RECOVERY_IMG="),
@@ -583,7 +599,8 @@ fn test_generate_launch_script_iso_unchanged() {
         &config,
         None,
         None,
-    );
+    )
+    .unwrap();
 
     assert!(script.contains("ISO="), "Should use ISO variable");
     assert!(
@@ -616,7 +633,8 @@ fn test_generate_launch_script_uefi_with_floppy_keeps_normal_disk_boot() {
         &config,
         None,
         Some(Path::new("/tmp/boot.img")),
-    );
+    )
+    .unwrap();
 
     assert!(script.contains("FLOPPY=/tmp/boot.img"));
     assert_eq!(
@@ -816,7 +834,8 @@ fn test_macos_includes_smc_and_smbios() {
         &InstallMedia::None,
         Some("mac-osx-leopard"),
         None,
-    );
+    )
+    .unwrap();
 
     assert!(
         cmd.contains("isa-applesmc,osk="),
@@ -837,7 +856,8 @@ fn test_macos_uefi_uses_ahci() {
         &InstallMedia::None,
         Some("macos-sonoma"),
         None,
-    );
+    )
+    .unwrap();
 
     assert!(
         cmd.contains("ich9-ahci,id=sata"),
@@ -860,7 +880,8 @@ fn test_macos_uefi_with_opencore() {
         &InstallMedia::None,
         Some("macos-sonoma"),
         None,
-    );
+    )
+    .unwrap();
 
     // OpenCore as sata.0
     assert!(
@@ -892,7 +913,8 @@ fn test_macos_recovery_image_qcow2_on_ahci() {
         &InstallMedia::RecoveryImage(None),
         Some("macos-sonoma"),
         None,
-    );
+    )
+    .unwrap();
 
     // Recovery image on AHCI bus (no format= so QEMU auto-detects DMG vs qcow2)
     assert!(
@@ -922,7 +944,8 @@ fn test_macos_spice_audio() {
         &InstallMedia::None,
         Some("macos-sonoma"),
         None,
-    );
+    )
+    .unwrap();
 
     assert!(
         cmd.contains("-audiodev spice,id=audio0"),
@@ -941,7 +964,8 @@ fn test_spice_app_emits_agent_channel() {
         display: "spice-app".to_string(),
         ..WizardQemuConfig::default()
     };
-    let cmd = build_qemu_command_with_os(&config, "disk.qcow2", &InstallMedia::None, None, None);
+    let cmd =
+        build_qemu_command_with_os(&config, "disk.qcow2", &InstallMedia::None, None, None).unwrap();
 
     for arg in SPICE_AGENT_ARGS {
         assert!(
@@ -958,7 +982,8 @@ fn test_non_spice_display_has_no_agent_channel() {
         display: "gtk".to_string(),
         ..WizardQemuConfig::default()
     };
-    let cmd = build_qemu_command_with_os(&config, "disk.qcow2", &InstallMedia::None, None, None);
+    let cmd =
+        build_qemu_command_with_os(&config, "disk.qcow2", &InstallMedia::None, None, None).unwrap();
 
     for arg in SPICE_AGENT_ARGS {
         assert!(
@@ -978,7 +1003,8 @@ fn test_spice_agent_channel_with_gl_acceleration() {
         gl_acceleration: true,
         ..WizardQemuConfig::default()
     };
-    let cmd = build_qemu_command_with_os(&config, "disk.qcow2", &InstallMedia::None, None, None);
+    let cmd =
+        build_qemu_command_with_os(&config, "disk.qcow2", &InstallMedia::None, None, None).unwrap();
     let setup = generate_video_args_setup(&config);
 
     assert!(cmd.contains("\"${VM_CURATOR_VIDEO_ARGS[@]}\""));
@@ -994,7 +1020,7 @@ fn test_spice_agent_channel_with_gl_acceleration() {
 
 #[test]
 fn test_set_spice_agent_args_add_remove_roundtrip() {
-    let original = "#!/bin/bash\nqemu-system-x86_64 \\\n        -m 2048 \\\n        -display gtk \\\n        -qmp unix:sock,server=on,wait=off\n";
+    let original = "#!/usr/bin/env bash\nqemu-system-x86_64 \\\n        -m 2048 \\\n        -display gtk \\\n        -qmp unix:sock,server=on,wait=off\n";
 
     // Enabling inserts the three channel lines right after -display.
     let enabled = set_spice_agent_args(original, true);
@@ -1030,7 +1056,8 @@ fn test_macos_usb_kbd() {
         &InstallMedia::None,
         Some("macos-sonoma"),
         None,
-    );
+    )
+    .unwrap();
 
     assert!(
         cmd.contains("-device usb-kbd"),
@@ -1065,7 +1092,8 @@ fn test_ppc_macos_no_smc() {
         &InstallMedia::None,
         Some("mac-osx-tiger"),
         None,
-    );
+    )
+    .unwrap();
 
     assert!(
         !cmd.contains("applesmc"),
@@ -1091,7 +1119,8 @@ fn test_non_macos_unchanged() {
         &InstallMedia::None,
         Some("ubuntu-24-04"),
         None,
-    );
+    )
+    .unwrap();
 
     assert!(
         !cmd.contains("applesmc"),
@@ -1129,7 +1158,8 @@ fn test_macos_uefi_iso_no_boot_d() {
         &InstallMedia::Iso(None),
         Some("macos-sonoma"),
         None,
-    );
+    )
+    .unwrap();
 
     // macOS UEFI should attach ISO on AHCI bus and NOT add -boot d
     assert!(
@@ -1153,7 +1183,8 @@ fn test_macos_opencore_bootloader_check_in_script() {
         &config,
         Some("macos-sonoma"),
         None,
-    );
+    )
+    .unwrap();
 
     assert!(
         script.contains("Verify OpenCore bootloader exists"),
@@ -1176,7 +1207,8 @@ fn test_macos_non_uefi_uses_bios() {
         &InstallMedia::None,
         Some("mac-osx-leopard"),
         None,
-    );
+    )
+    .unwrap();
 
     assert!(
         cmd.contains("-bios \"$ROM\""),
@@ -1237,7 +1269,7 @@ fn fixture_launch_sh_five_branch_user_net() -> String {
         -usb \\\n        \
         -device usb-tablet";
     format!(
-        "#!/bin/bash\n\
+        "#!/usr/bin/env bash\n\
          DISK=\"disk.qcow2\"\n\
          case \"$1\" in\n    \
              --install)\n{qemu}\n        ;;\n    \
@@ -1435,14 +1467,6 @@ fn test_fedora_4m_secboot_preferred_over_2m() {
 }
 
 #[test]
-fn test_default_ovmf_firmware_is_raw() {
-    let fw = default_ovmf_firmware();
-    assert_eq!(fw.format, "raw");
-    assert!(fw.code.ends_with(".fd"));
-    assert!(fw.vars_template.ends_with(".fd"));
-}
-
-#[test]
 fn test_is_block_device_dev_prefix() {
     assert!(is_block_device(Path::new("/dev/nvme0n1")));
     assert!(is_block_device(Path::new(
@@ -1478,7 +1502,8 @@ fn test_generate_launch_script_physical_disk() {
         &config,
         None,
         None,
-    );
+    )
+    .unwrap();
 
     // $DISK points at the device, not a file in the VM dir
     assert!(script.contains("DISK=/dev/disk/by-id/nvme-Samsung_SSD_990_PRO_1TB_S6B0NS0W123456"));
@@ -1560,4 +1585,25 @@ fn test_create_vm_physical_disk_requires_selection() -> Result<()> {
     assert_eq!(err.to_string(), "No physical disk selected");
     assert!(!library.path().join("physical-missing").exists());
     Ok(())
+}
+
+#[test]
+fn test_ovmf_tables_contain_nixos_paths() {
+    let nixos_secboot = OVMF_SECBOOT_PAIRS
+        .iter()
+        .any(|(code, _, _)| code.contains("nix-ovmf") && code.contains("secure"));
+    let nixos_normal = OVMF_PAIRS.iter().any(|(code, _, _)| {
+        code.contains("nix-ovmf")
+            && (code.contains("edk2-x86_64-code") || code.ends_with("OVMF_CODE.fd"))
+    });
+
+    assert!(nixos_secboot, "NixOS Secure Boot paths missing from table");
+    assert!(nixos_normal, "NixOS Normal OVMF paths missing from table");
+}
+
+#[test]
+fn test_is_windows_11_detection() {
+    assert!(is_windows_11(Some("windows-11")));
+    assert!(!is_windows_11(Some("windows-10")));
+    assert!(!is_windows_11(None));
 }

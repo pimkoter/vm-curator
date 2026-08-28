@@ -10,7 +10,7 @@ fn test_extract_memory() {
 #[test]
 fn test_extract_emulator() {
     assert_eq!(
-        extract_emulator("#!/bin/bash\nqemu-system-i386 -m 512"),
+        extract_emulator("#!/usr/bin/env bash\nqemu-system-i386 -m 512"),
         Some(QemuEmulator::I386)
     );
     assert_eq!(
@@ -163,7 +163,7 @@ fn test_extract_bios_path_not_present() {
 fn test_parse_launch_script_with_bios() {
     let vm_dir = Path::new("/home/user/vms/mac-system7");
     let script_path = vm_dir.join("launch.sh");
-    let content = r#"#!/bin/bash
+    let content = r#"#!/usr/bin/env bash
 VM_DIR="$(dirname "$(readlink -f "$0")")"
 DISK="$VM_DIR/mac-system7.qcow2"
 ROM="$VM_DIR/MacROM.bin"
@@ -195,7 +195,7 @@ fn test_disk_roles_pflash_and_cdrom_excluded() {
     // VM's snapshot-capable primary disk.
     let vm_dir = Path::new("/home/user/vms/win11-physical");
     let script_path = vm_dir.join("launch.sh");
-    let content = r#"#!/bin/bash
+    let content = r#"#!/usr/bin/env bash
 VM_DIR="$(dirname "$(readlink -f "$0")")"
 DISK="/dev/disk/by-id/nvme-Samsung_SSD_990_PRO_1TB_S6B0NS0W123456"
 ISO="$VM_DIR/win11.iso"
@@ -238,7 +238,7 @@ qemu-system-x86_64 \
 fn test_disk_roles_qcow2_system_disk_still_snapshotable() {
     let vm_dir = Path::new("/home/user/vms/fedora");
     let script_path = vm_dir.join("launch.sh");
-    let content = r#"#!/bin/bash
+    let content = r#"#!/usr/bin/env bash
 VM_DIR="$(dirname "$(readlink -f "$0")")"
 DISK="$VM_DIR/fedora.qcow2"
 
