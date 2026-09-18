@@ -1651,7 +1651,12 @@ fn render_new_disk_mode(app: &App, frame: &mut Frame, area: Rect) {
         .wizard_vm_path()
         .map(|p| p.join(format!("{}.{}", state.folder_name, disk_format.extension())))
         .map(|p| p.display().to_string())
-        .unwrap_or_else(|| format!("~/vm-space/<vm-name>/<vm-name>.{}", disk_format.extension()));
+        .unwrap_or_else(|| {
+            format!(
+                "~/Virtualmachines/<vm-name>/<vm-name>.{}",
+                disk_format.extension()
+            )
+        });
 
     let info_text = vec![
         Line::from(vec![

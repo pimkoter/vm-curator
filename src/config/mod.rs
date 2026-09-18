@@ -69,7 +69,7 @@ impl Default for Config {
             .join("vm-curator");
 
         Self {
-            vm_library_path: home.join("vm-space"),
+            vm_library_path: home.join("Virtualmachines"),
             metadata_path: config_dir.join("metadata"),
             ascii_art_path: config_dir.join("ascii"),
             snapshot_prefix: "snapshot".to_string(),

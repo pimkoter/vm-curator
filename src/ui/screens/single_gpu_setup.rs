@@ -282,7 +282,7 @@ fn render_scripts_info(app: &App, frame: &mut Frame, area: Rect) {
 
     let vm_path = vm
         .map(|v| v.path.display().to_string())
-        .unwrap_or_else(|| "~/vm-space/<vm>/".to_string());
+        .unwrap_or_else(|| "~/Virtualmachines/<vm>/".to_string());
 
     let mut lines = vec![
         Line::styled("Scripts location:", Style::default().fg(Color::White)),
@@ -366,7 +366,7 @@ pub fn render_instructions(app: &App, frame: &mut Frame) {
     let vm_path = app
         .selected_vm()
         .map(|v| v.path.display().to_string())
-        .unwrap_or_else(|| "~/vm-space/<vm>".to_string());
+        .unwrap_or_else(|| "~/Virtualmachines/<vm>".to_string());
 
     // Check if running from TTY
     let tty_warning = if !is_running_from_tty() {
